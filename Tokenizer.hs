@@ -3,6 +3,7 @@ module Tokenizer where
 import Combinators
 import Data.Char (isDigit, ord)
 import Data.List (foldl')
+import Data.Maybe (fromJust)
 
 
 data Token = Ident String
@@ -19,15 +20,27 @@ keyWords = [ "False", "await", "else", "import", "pass", "None", "break", "excep
 --Parses Tokens
 tokenize :: String -> [Token]
 tokenize input =
-  case runParser (many parseToken) input of
+  case runParser parseTokens input of
     Just ([], res) -> res
     _              -> []
 
-parseToken :: Parser String Token
-parseToken = many parseDelimiters *>
-     ((KeyWord <$> parseKeyWord)
+parseFinishToken :: Parser String Token
+parseFinishToken = (KeyWord <$> parseKeyWord)
   <|> (Ident <$> parseIdent)
-  <|> (Number <$> parseNumber))
+  <|> (Number <$> parseNumber)
+
+parseDelimiters :: Parser String String
+parseDelimiters = some (token ' ')
+
+parseBodyToken :: Parser String Token
+parseBodyToken = (KeyWord <$> parseKeyWord <* some parseDelimiters)
+  <|> (Ident <$> parseIdent <* some parseDelimiters)
+  <|> (Number <$> parseNumber <* some parseDelimiters)
+
+parseTokens :: Parser String [Token]
+parseTokens = many parseDelimiters *>
+      ((((++) <$> many parseBodyToken) <*> ((:[]) <$> parseFinishToken))
+  <|> (many parseBodyToken))
 
 
 --Parse Ident
@@ -54,7 +67,6 @@ parseIdent :: Parser String String
 parseIdent = (:)
   <$> parseStartIdent
   <*> (concat <$> many parseBodyIdent)
-  <*  parseDelimiters
 
 -- Parses Keywords
 parseKeyWord :: Parser String String
@@ -90,5 +102,4 @@ parseNumber = read
            <*  many parseZeroBlock
         )
       )
-   <* parseDelimiters
 

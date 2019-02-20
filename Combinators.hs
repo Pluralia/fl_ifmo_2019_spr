@@ -10,7 +10,6 @@ module Combinators
     , token
     , keywords 
     , success
-    , parseDelimiters
     ) where
 
 import Prelude hiding (seq)
@@ -132,7 +131,7 @@ str2trie = fmap go . splitSymb . sort
 -- Parses one level and return the first success branch 
 parseBranch :: [Trie String] -> Parser String ([Trie String], String)
 parseBranch []                     = empty
-parseBranch (Leaf : xs)            = parseDelimiters *> (([],) <$> success "")
+parseBranch (Leaf : xs)            = ([],) <$> success ""
 parseBranch ((Branch x trie) : xs) = ((trie,) <$> tokList x) <|> parseBranch xs
 
 -- Parses keywords
@@ -146,10 +145,6 @@ keywords kws = go . str2trie $ kws
         Nothing                 -> Nothing
         Just (s', ([], res))    -> Just (s', res)
         Just (s', (trie', res)) -> fmap (res ++) <$> runParser (go trie') s'
-
--- Parses delimiters
-parseDelimiters :: Parser String String
-parseDelimiters = some (like (`elem` [' ', '\0', '\t', '\n']))
 
 -- Checks if the first element of the input is the given token
 token :: Eq token => token -> Parser [token] token
