@@ -7,7 +7,7 @@ import Data.List (foldl')
 
 data Token = Ident String
            | KeyWord String
-           | Number Int  -- Change Number type if you work with something other than Int
+           | Number Integer  -- Change Number type if you work with something other than Int
            deriving (Show, Eq)
 
 
@@ -72,13 +72,13 @@ parseZeroBlock =
       (token '_' *> token '0')
   <|> token '0'
 
-myRead :: String -> Int
+myRead :: String -> Integer
 myRead input
-  | null $ filter (not . isDigit) input = foldl' (\acc x -> 10 * acc + ord x - 48) 0 input
+  | null $ filter (not . isDigit) input = foldl' (\acc x -> 10 * acc + toInteger (ord x) - 48) 0 input
   | otherwise                           = undefined
 
-parseNumber :: Parser String Int
-parseNumber = myRead
+parseNumber :: Parser String Integer
+parseNumber = read
   <$> (
         ((:)
            <$> like (\x -> isDigit x && (x /= '0'))
