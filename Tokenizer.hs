@@ -24,23 +24,19 @@ tokenize input =
     Just ([], res) -> res
     _              -> []
 
-parseFinishToken :: Parser String Token
-parseFinishToken = (KeyWord <$> parseKeyWord)
-  <|> (Ident <$> parseIdent)
+parseOneToken :: Parser String Token
+parseOneToken = (Ident <$> parseIdent)
+  <|> (KeyWord <$> parseKeyWord)
   <|> (Number <$> parseNumber)
 
 parseDelimiters :: Parser String String
 parseDelimiters = some (token ' ')
 
-parseBodyToken :: Parser String Token
-parseBodyToken = (KeyWord <$> parseKeyWord <* some parseDelimiters)
-  <|> (Ident <$> parseIdent <* some parseDelimiters)
-  <|> (Number <$> parseNumber <* some parseDelimiters)
-
 parseTokens :: Parser String [Token]
 parseTokens = many parseDelimiters *>
-      ((((++) <$> many parseBodyToken) <*> ((:[]) <$> parseFinishToken))
-  <|> (many parseBodyToken))
+      ((:) <$> parseOneToken)
+  <*> many (some parseDelimiters *> parseOneToken)
+  <*  many parseDelimiters
 
 
 --Parse Ident
