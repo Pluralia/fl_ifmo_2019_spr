@@ -2,6 +2,8 @@ module Automaton where
 
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
+import Data.Char (isSpace)
+import Combinators
 
 type Set = Set.Set
 type Map = Map.Map
@@ -22,4 +24,28 @@ data Automaton s q = Automaton { sigma     :: Set s
 -- * Delta function is defined on not-a-state or not-a-symbol-from-sigma
 -- Pick appropriate types for s and q
 -- parseAutomaton :: String -> Maybe (Automaton ? ?)
+
 parseAutomaton = undefined
+
+data ELement = Delta | Char | State
+  deriving (Show, Eq, Ord)
+
+parseList :: Parser String e -> -- elem
+             Parser String d -> -- delim
+             Parser String l -> -- lbr
+             Parser String r -> -- rbr
+             Int             -> -- minimumNumberElems
+             Parser String [e]
+parseList elem delim lbr rbr minNumElems = fmap (checker minNumElems) . many $
+      many (like isSpace)
+   *> some lbr
+   *> many (like isSpace)
+   *> elem
+  <*  many (like isSpace)
+  <*  some rbr
+  <*  many (like isSpace)
+  where
+    checker :: Int -> [e] -> [e]
+    checker n list
+      | length list < n = []
+      | otherwise       = list
