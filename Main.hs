@@ -15,6 +15,7 @@ main = do
   runTokenizer " "
   runTokenizer "7     2147483647 3 Kkjhkd wd_wd__d______w_    79228162514264337593 finally 543_950336       100_000_000_000"
   -- keywords && idents
+  runTokenizer "for forward for"
   runTokenizer "import     _if       nonlocal_ ex_cept   ___deoij    _32     AShk__j3029__"
   -- numbers
   runTokenizer "0    0_0     00000     0_00    00_0_000_0"

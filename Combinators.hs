@@ -10,6 +10,7 @@ module Combinators
     , token
     , keywords 
     , success
+    , notParser
     ) where
 
 import Prelude hiding (seq)
@@ -168,4 +169,11 @@ like p = Parser go
     go [] = Nothing
     go (x : xs) | p x       = Just (xs, x)
                 | otherwise = Nothing
+
+-- Negate the result of a parser
+notParser :: Parser String a -> Parser String ()
+notParser pars = Parser $ \str ->
+  case runParser pars str of
+    Nothing -> Just (str, ())
+    Just _  -> Nothing
 

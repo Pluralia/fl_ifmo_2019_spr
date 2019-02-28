@@ -25,8 +25,8 @@ tokenize input =
     _              -> []
 
 parseOneToken :: Parser String Token
-parseOneToken = (Ident <$> parseIdent)
-  <|> (KeyWord <$> parseKeyWord)
+parseOneToken = (KeyWord <$> parseKeyWord)
+  <|> (Ident <$> parseIdent)
   <|> (Number <$> parseNumber)
 
 parseDelimiters :: Parser String String
@@ -64,9 +64,11 @@ parseIdent = (:)
   <$> parseStartIdent
   <*> (concat <$> many parseBodyIdent)
 
+
 -- Parses Keywords
 parseKeyWord :: Parser String String
 parseKeyWord = keywords keyWords
+  <* notParser (parseLetter <|> parseSymbol <|> parseDigit)
 
 
 -- Parses Numbers
