@@ -1,0 +1,1 @@
+rm Main *.hi *.o
