@@ -3,8 +3,8 @@ module Automaton where
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set as Set
 import Data.Char (isSpace, isDigit)
-import Combinators
 import Data.Maybe (catMaybes)
+import Combinators
 
 type Set = Set.Set
 type Map = Map.Map
@@ -70,11 +70,11 @@ parseList elem delim lbr rbr minNumElems = fmap (checker minNumElems) $ (:)
   <*> many (delim *> parseBlock)
   where
     parseBlock = parseSpaces
-       *> some lbr
+       *> lbr
        *> parseSpaces
        *> elem
       <*  parseSpaces
-      <*  some rbr
+      <*  rbr
       <*  parseSpaces
     checker :: Int -> [e] -> [e]
     checker n list
@@ -93,31 +93,31 @@ mainParser elem n = parseSpaces
   <*  some parseTriRbr
   <*  parseSpaces
 
-type Symb  = Char
-type State = Int
+type Symb  = String
+type State = String
 data Delta = Delta State Symb State
   deriving (Show, Eq, Ord)
 
-parseDelim :: Parser String Symb
+parseDelim :: Parser String Char
 parseDelim = like (== ',')
 
-parseTriLbr :: Parser String Symb
+parseTriLbr :: Parser String Char
 parseTriLbr = like (== '<')
 
-parseTriRbr :: Parser String Symb
+parseTriRbr :: Parser String Char
 parseTriRbr = like (== '>')
 
-parseLbr :: Parser String Symb
+parseLbr :: Parser String Char
 parseLbr = like (== '(')
 
-parseRbr :: Parser String Symb
+parseRbr :: Parser String Char
 parseRbr = like (== ')')
 
-parseState :: Parser String Int
-parseState = read <$> some (like isDigit)
+parseState :: Parser String State
+parseState = some $ like (`elem` ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'])
 
 parseSymb :: Parser String Symb
-parseSymb = like (`elem` ['a'..'z'] ++ ['A'..'Z'])
+parseSymb = some $ like (`elem` ['a'..'z'] ++ ['A'..'Z'] ++ ['0'..'9'])
 
 parseDelta :: Parser String Delta
 parseDelta = Delta <$>
