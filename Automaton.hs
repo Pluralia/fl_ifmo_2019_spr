@@ -65,9 +65,10 @@ parseList :: Parser String e -> -- elem
              Parser String r -> -- rbr
              Int             -> -- minimumNumberElems
              Parser String [e]
-parseList elem delim lbr rbr minNumElems = fmap (checker minNumElems) $ (:)
+parseList elem delim lbr rbr minNumElems = fmap (checker minNumElems) $
+      ((:)
   <$> parseBlock
-  <*> many (delim *> parseBlock)
+  <*> many (delim *> parseBlock)) <|> success []
   where
     parseBlock = parseSpaces
        *> lbr
