@@ -31,12 +31,23 @@ data AutomatonError = InitStNotSt
 -- * Any of the terminal states is not a state
 -- * Delta function is defined on not-a-state or not-a-symbol-from-sigma
 parseAutomaton :: String -> Either String (Automaton Symb State)
-parseAutomaton = checkAutomaton . runParser parseAutomaton' . str2Batch
-
+parseAutomaton =
+  either (Left . err2str) Right . checkAutomaton . runParser parseAutomaton' . str2Batch
 
 str2Batch :: String -> [Batch Char]
-str2Batch = undefined
+str2Batch input = concat $
+  (\(l, symbs) -> (\(n, symb) -> Batch symb (l, n)) <$> zip [1..] symbs) <$> zip [1..] (lines input)
 
+err2str :: Either [(ErrorType, Holder)] AutomatonError -> String
+err2str = either (concatMap errType2str) autoErr2str
+  where
+    errType2str :: (ErrorType, Holder) -> String
+    errType2str (err, (l, n)) = show err ++ ":" ++ show l ++ ":" ++ show n ++ "\n"
+    autoErr2str :: AutomatonError -> String
+    autoErr2str InitStNotSt    = "The init state is not a state.\n"
+    autoErr2str TermStNotSt    = "Any of the terminal states is not a state.\n"
+    autoErr2str DeltaOnNotSt   = "Delta function is defined on not-a-state.\n"
+    autoErr2str DeltaOnNotSigm = "Delta function is defined on not-a-symbol-from-sigma.\n"
 
 checkAutomaton :: Either [(ErrorType, Holder)] ([Batch Char], Automaton Symb State) ->
                   Either (Either [(ErrorType, Holder)] AutomatonError) (Automaton Symb State)
