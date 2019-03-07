@@ -184,7 +184,7 @@ isDFA auto =
 -- Checks if the automaton is nondeterministic
 -- (eps-transition or multiple transitions for a state and a symbol)
 isNFA :: Automaton Symb State -> Bool
-isNFA = not . isDFA
+isNFA = True
 
 -- Checks if the automaton is complete 
 -- (there exists a transition for each state and each input symbol)
