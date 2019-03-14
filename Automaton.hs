@@ -23,6 +23,7 @@ data AutomatonError = InitStNotSt
                     | TermStNotSt
                     | DeltaOnNotSt
                     | DeltaOnNotSigm
+                --  | isNFA
   deriving (Show)
 
 -- Top level function: parses input string, checks that it is an automaton, and then returns it.
@@ -193,13 +194,13 @@ isNFA = const True
 isComplete :: Automaton Symb State -> Bool 
 isComplete auto = noAloneSt && noAloneSymb
   where
-    noAloneSt    = null $ states auto Set.\\ existAloneSt auto
+    noAloneSt    = null $ existAloneSt auto
     
     symbsFromSts = Map.fromListWith Set.union . fmap (second Set.singleton) .  Map.keys . delta $ auto
     noAloneSymb  = and . fmap (null . (sigma auto Set.\\)) . Map.elems $ symbsFromSts
 
 existAloneSt :: Automaton Symb State -> Set State
-existAloneSt auto = dfs Set.empty startSt startSt
+existAloneSt auto =states auto Set.\\ (dfs Set.empty startSt startSt)
   where
     startSt = Set.singleton . initState $ auto
     
@@ -276,5 +277,69 @@ reverseDelta = Map.fromListWith Set.union . concatMap go . Map.toList . delta
     go :: ((q, s), Set q) -> [((q, s), Set q)]
     go ((fromSt, symb), toStSet) = 
       (\toSt -> ((toSt, symb), Set.singleton fromSt)) <$> Set.toList toStSet
+
+
+-- return epsilon-close of the automaton
+epsilonClose :: Automaton Symb State -> Automaton Symb State
+epsilonClose = id
+
+
+-- return the DFA
+toDFA :: Automaton Symb State -> Automaton Symb State
+toDFA = id
+
+
+-- return minimal automaton if input is the DFA
+doMinimal :: Automaton Symb State -> Either String (Automaton Symb State)
+doMinimal auto
+  | isNFA auto = Left "isNFA"
+  | isDFA auto = (doComplete . removeAloneSt $ auto) >>= Right . minimize
+  where
+    minimize :: Automaton Symb State -> Automaton Symb State
+    minimize auto = auto -- equiveClasses auto
+
+
+removeAloneSt :: Automaton Symb State -> Automaton Symb State
+removeAloneSt auto = Automaton
+  (sigma auto)
+  (states auto Set.\\ exSt)
+  (initState auto)
+  (termState auto Set.\\ exSt)
+  (removeToSt . removeFromSt . delta $ auto)
+  where
+    exSt         = existAloneSt auto
+    removeFromSt =
+      Map.filterWithKey (\(from, symb) to -> not $ from `Set.member` exSt) 
+    removeToSt   =
+      Map.mapMaybe (\toSt -> if not . null $ exSt `Set.intersection` toSt then Nothing else Just toSt)
+
+
+-- return complete automaton
+doComplete :: Automaton Symb State -> Either String (Automaton Symb State)
+doComplete auto
+  | isNFA auto = Left "isNFA"
+  | isDFA auto = Right $ Automaton
+  (sigma auto)
+  ("bottom" `Set.insert` states auto)
+  (initState auto)
+  (termState auto)
+  (addDeltas (delta auto) (Set.toList . states $ auto))
+  where
+    usedSymbForCurrSt :: State -> [Symb]
+    usedSymbForCurrSt st = fmap snd . filter (\(from, _) -> from == st) . Map.keys . delta $ auto
+
+    unusedSymbForCurrSt :: State -> [Symb]
+    unusedSymbForCurrSt = Set.toList . (sigma auto Set.\\) . Set.fromList . usedSymbForCurrSt
+  
+    addDeltasSymb :: Map (State, Symb) (Set State) -> [Symb] -> State -> Map (State, Symb) (Set State)
+    addDeltasSymb delt []          _  = delt
+    addDeltasSymb delt (symb : xs) st =
+      addDeltasSymb (Map.insert (st, symb) (Set.singleton "bottom") delt) xs st
+
+    addDeltas :: Map (State, Symb) (Set State) -> [State] -> Map (State, Symb) (Set State)
+    addDeltas delt []        = delt
+    addDeltas delt (st : xs) =
+      addDeltas (addDeltasSymb delt (unusedSymbForCurrSt st) st) xs
+
 
 
