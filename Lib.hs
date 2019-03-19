@@ -6,6 +6,7 @@ module Lib
     , isComplete
     , isMinimal
     , doComplete
+    , minimize
     ) where
 
 import qualified Data.Map.Lazy as Map
@@ -47,12 +48,14 @@ isComplete auto = isDFA auto && noAloneSt && noAloneSymb
     noAloneSt   = null $ states auto Set.\\ availableSt auto 
     noAloneSymb = and . fmap (null . (sigma auto Set.\\)) . Map.elems . symbsByEverySt $ auto
 
+
 symbsByEverySt :: Automaton Symb State -> Map State (Set Symb)
 symbsByEverySt auto = stSymbDelta `Map.union` addStSymb
   where
     stSymbDelta = Map.fromListWith Set.union . fmap (second Set.singleton) .  Map.keys . delta $ auto
     stFromDelta = Set.difference (states auto) . Set.fromList . Map.keys $ stSymbDelta
     addStSymb   = Map.fromList . fmap (, Set.empty) . Set.toList $ stFromDelta
+
 
 availableSt :: Automaton Symb State -> Set State
 availableSt auto = dfs Set.empty startSt startSt
@@ -134,6 +137,7 @@ reverseDelta = Map.fromListWith Set.union . concatMap go . Map.toList . delta
     go ((fromSt, symb), toStSet) = 
       (\toSt -> ((toSt, symb), Set.singleton fromSt)) <$> Set.toList toStSet
 
+
 ----------------------------------------------------------------------------------------------------
 -- return complete automaton
 doComplete :: Automaton Symb State -> Either String (Automaton Symb State)
@@ -160,4 +164,45 @@ doComplete auto
     addDelta = concatMap (fmap (, bottomSet) . transformStSetSymb). Map.toList $ addStSymb
 
     bottomDelta = fmap (\x -> ((bottom, x), bottomSet)) . Set.toList . sigma $ auto
+
+
+-----------------------------------------------------------------------------------------------------
+-- return complete automaton
+minimize :: Automaton Symb State -> Either String (Automaton Symb State)
+minimize auto
+  | not $ isDFA auto = Left "isNFA"
+  | otherwise        = (\a -> buildAuto a $ equiveClasses a) <$> (doComplete . removeAloneSt $ auto)
+
+
+buildAuto :: Automaton Symb State -> [Set State] -> Automaton Symb State
+buildAuto auto classes = Automaton
+  (sigma auto)
+  (Set.fromList . fmap union2OneSt $ classes)
+  (toNewState . initState $ auto)
+  (Set.map toNewState . termState $ auto)
+  (Map.fromList . fmap toNewDelta . Map.toList . delta $ auto)
+  where
+    union2OneSt :: Set State -> State
+    union2OneSt = concat . Set.toList
+    
+    toNewState :: State -> State
+    toNewState st = union2OneSt . head . filter (Set.member st) $ classes
+
+    toNewDelta :: ((State, Symb), Set State) -> ((State, Symb), Set State)
+    toNewDelta ((from, symb), to) = ((toNewState from, symb), toNewState `Set.map` to)
+
+
+removeAloneSt :: Automaton Symb State -> Automaton Symb State
+removeAloneSt auto = Automaton
+  (sigma auto)
+  (availableSt auto)
+  (initState auto)
+  (termState auto Set.\\ aloneSt)
+  (removeToSt . removeFromSt . delta $ auto)
+  where
+    aloneSt      = states auto Set.\\ availableSt auto
+    removeFromSt =
+      Map.filterWithKey (\(from, symb) to -> not $ from `Set.member` aloneSt) 
+    removeToSt   =
+      Map.mapMaybe (\toSt -> if null $ aloneSt `Set.intersection` toSt then Just toSt else Nothing)
 
