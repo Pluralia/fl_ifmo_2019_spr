@@ -1,8 +1,12 @@
+{-# LANGUAGE TupleSections #-}
+
+
 module Lib
     ( isDFA
     , isNFA
     , isComplete
     , isMinimal
+    , doComplete
     ) where
 
 import qualified Data.Map.Lazy as Map
@@ -17,6 +21,7 @@ type Set = Set.Set
 type Map = Map.Map
 
 
+----------------------------------------------------------------------------------------------------
 -- Checks if the automaton is deterministic 
 -- (only one transition for each state and each input symbol)
 isDFA :: Automaton Symb State -> Bool
@@ -27,22 +32,28 @@ isDFA auto =
    in noMultTrans && noEpsTrans
 
 
+----------------------------------------------------------------------------------------------------
 -- Checks if the automaton is nondeterministic
 -- (eps-transition or multiple transitions for a state and a symbol)
 isNFA :: Automaton Symb State -> Bool
 isNFA = const True
 
 
+----------------------------------------------------------------------------------------------------
 -- Checks if the automaton is complete
 -- (there exists a transition for each state and each input symbol)
 isComplete :: Automaton Symb State -> Bool 
 isComplete auto = isDFA auto && noAloneSt && noAloneSymb
   where
-    noAloneSt    = null $ states auto Set.\\ availableSt auto
-    
-    symbsFromSt = Map.fromListWith Set.union . fmap (second Set.singleton) .  Map.keys . delta $ auto
-    noAloneSymb = ((length . states $ auto) == length symbsFromSt) &&
-                  (and . fmap (null . (sigma auto Set.\\)) . Map.elems $ symbsFromSt)
+    noAloneSt   = null $ states auto Set.\\ availableSt auto 
+    noAloneSymb = and . fmap (null . (sigma auto Set.\\)) . Map.elems . symbsByEverySt $ auto
+
+symbsByEverySt :: Automaton Symb State -> Map State (Set Symb)
+symbsByEverySt auto = stSymbDelta `Map.union` addStSymb
+  where
+    stSymbDelta = Map.fromListWith Set.union . fmap (second Set.singleton) .  Map.keys . delta $ auto
+    stFromDelta = Set.difference (states auto) . Set.fromList . Map.keys $ stSymbDelta
+    addStSymb   = Map.fromList . fmap (, Set.empty) . Set.toList $ stFromDelta
 
 availableSt :: Automaton Symb State -> Set State
 availableSt auto = dfs Set.empty startSt startSt
@@ -62,13 +73,14 @@ availableSt auto = dfs Set.empty startSt startSt
       | otherwise   = dfs started (snd . Set.deleteFindMin $ starts) acc
 
 
+----------------------------------------------------------------------------------------------------
 -- Checks if the automaton is minimal 
 -- (only for DFAs: the number of states is minimal)
 isMinimal :: Automaton Symb State -> Bool
-isMinimal auto
-  | isDFA auto && isComplete auto
-      = null $ (Set.fromList . equiveClasses $ auto) Set.\\ (Set.map Set.singleton . states $ auto)
-  | otherwise = False
+isMinimal auto = case doComplete auto of
+  Left  _       -> False
+  Right comAuto ->
+    null $ (Set.fromList . equiveClasses $ auto) Set.\\ (Set.map Set.singleton . states $ comAuto)
 
 
 equiveClasses :: Automaton Symb State -> [Set State]
@@ -123,4 +135,30 @@ reverseDelta = Map.fromListWith Set.union . concatMap go . Map.toList . delta
     go ((fromSt, symb), toStSet) = 
       (\toSt -> ((toSt, symb), Set.singleton fromSt)) <$> Set.toList toStSet
 
+----------------------------------------------------------------------------------------------------
+-- return complete automaton
+doComplete :: Automaton Symb State -> Either String (Automaton Symb State)
+doComplete auto
+  | isDFA auto && isComplete auto = Right auto
+  | isDFA auto                    = Right comAuto
+  | otherwise                     = Left "isNFA"
+  where
+    comAuto = Automaton
+      (sigma auto)
+      (bottom `Set.insert` states auto)
+      (initState auto)
+      (termState auto)
+      (Map.unions [delta auto, Map.fromList addDelta, Map.fromList bottomDelta])
+
+    bottom = "bottom"
+    bottomSet = Set.singleton bottom
+
+    transformStSetSymb :: (State, Set Symb) -> [(State, Symb)]
+    transformStSetSymb (st, symbSet) = fmap (st,) . Set.toList $ symbSet
+
+    addStSymb = Map.filter (not . Set.null) . Map.map ((Set.\\) (sigma auto)) . symbsByEverySt $ auto
+
+    addDelta = concatMap (fmap (, bottomSet) . transformStSetSymb). Map.toList $ addStSymb
+
+    bottomDelta = fmap (\x -> ((bottom, x), bottomSet)) . Set.toList . sigma $ auto
 
