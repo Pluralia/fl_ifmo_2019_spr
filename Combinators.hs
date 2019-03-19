@@ -1,5 +1,6 @@
-{-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE InstanceSigs  #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase    #-}
 
 module Combinators
     ( Parser(..)  
@@ -15,6 +16,7 @@ module Combinators
     , success
     , notParser
     ) where
+
 import Prelude hiding (seq)
 import Control.Applicative
 import Data.List (sort, partition)
@@ -47,8 +49,8 @@ success ok = Parser $ \s -> Right (s, ok)
 
 -- Parser which fails no mater the input
 failP :: err -> Parser str err ok
-failP err = Parser $ \s ->
-  case s of
+failP err = Parser $
+  \case
     []          -> Left [(err, (0, 0))]
     (batch : _) -> Left [(err, holder batch)]
 
@@ -133,7 +135,7 @@ getPrefix []   = error "getPrefix" -- undefined
 getPrefix list =
   let prefix = [head . head $ list]
       rest   = tail <$> list
-   in if null $ filter null rest
+   in if not $ any null rest
         then if (== 1) . length . splitSymb $ rest
                then let (prefix', rest') = getPrefix rest in (prefix ++ prefix', rest')
                else (prefix, rest)
@@ -149,16 +151,16 @@ str2trie = fmap go . splitSymb . sort
       let (prefix, rest) = getPrefix list
           rest'          = filter (not . null) rest
           trieList       = fmap go . splitSymb $ rest'
-       in if null $ filter null rest
+       in if not $ any null rest
             then Branch prefix trieList
             else Branch prefix (Leaf : trieList)
 
 
 -- Parses one level and return the first success branch 
 parseBranch :: [Trie String] -> Parser Char ErrorType ([Trie String], String)
-parseBranch []                     = failP EmptyTrieKeywords
-parseBranch (Leaf : xs)            = ([],) <$> success ""
-parseBranch ((Branch x trie) : xs) = ((trie,) <$> tokList x) <|> parseBranch xs
+parseBranch []                   = failP EmptyTrieKeywords
+parseBranch (Leaf : xs)          = ([],) <$> success ""
+parseBranch (Branch x trie : xs) = ((trie,) <$> tokList x) <|> parseBranch xs
 
 -- Parses keywords
 keywords :: [String] -> Parser Char ErrorType String
@@ -174,8 +176,8 @@ keywords kws = go . str2trie $ kws
 
 -- Checks if the first element of the input is the given token
 token :: Eq token => token -> Parser token ErrorType (Batch token)
-token t = Parser $ \s ->
-  case s of
+token t = Parser $
+  \case
     []        -> Left [(EmptyInput, (0, 0))]
     (t' : s') -> if input t' == t
                    then Right (s', t')
@@ -193,8 +195,8 @@ tokList list = Parser $ \s -> go list s
 
 -- Checks the predicate
 like :: (a -> Bool) -> Parser a ErrorType a
-like p = Parser $ \s ->
-  case s of
+like p = Parser $
+  \case
     []       -> Left [(EmptyInput, (0, 0))]
     (x : xs) -> if p . input $ x
                   then Right (xs, input x)
