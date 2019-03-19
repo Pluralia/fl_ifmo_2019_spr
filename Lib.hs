@@ -43,9 +43,8 @@ isNFA = const True
 -- Checks if the automaton is complete
 -- (there exists a transition for each state and each input symbol)
 isComplete :: Automaton Symb State -> Bool 
-isComplete auto = isDFA auto && noAloneSt && noAloneSymb
+isComplete auto = isDFA auto && noAloneSymb
   where
-    noAloneSt   = null $ states auto Set.\\ availableSt auto 
     noAloneSymb = and . fmap (null . (sigma auto Set.\\)) . Map.elems . symbsByEverySt $ auto
 
 
