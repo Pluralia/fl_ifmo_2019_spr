@@ -79,7 +79,7 @@ isMinimal :: Automaton Symb State -> Bool
 isMinimal auto = case doComplete auto of
   Left  _       -> False
   Right comAuto ->
-    null $ (Set.fromList . equiveClasses $ auto) Set.\\ (Set.map Set.singleton . states $ comAuto)
+    null $ (Set.fromList . equiveClasses $ comAuto) Set.\\ (Set.map Set.singleton . states $ comAuto)
 
 
 equiveClasses :: Automaton Symb State -> [Set State]
