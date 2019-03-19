@@ -2,6 +2,7 @@ module Main where
 
 import System.Environment
 import Automaton
+import Lib
 import Text.Printf
 
 automatonInfo :: Automaton String String -> String

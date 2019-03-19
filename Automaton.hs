@@ -1,4 +1,12 @@
-module Automaton where
+module Automaton
+    ( Automaton(..)
+    , State(..)
+    , Symb(..)
+    , parseAutomaton
+    , usedStatesFrom
+    , usedStatesTo
+    , usedSymbols
+    ) where
 
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set      as Set
@@ -123,7 +131,7 @@ parseList elem delim lbr rbr minNumElems = fmap (checker minNumElems) $
       | otherwise       = list
 
 
--- TEST PARSERS -------------------------------------------------------------------------------------
+-- AUTOMATON PARSERS ---------------------------------------------------------------------------------
 
 mainParser elem n = parseSpaces
    *> some parseTriLbr
@@ -169,113 +177,4 @@ parseDelta = Delta <$>
   <*  parseDelim
   <*  parseSpaces
   <*> parseState
-
------------------------------------------------------------------------------------------------------
-
--- Checks if the automaton is deterministic 
--- (only one transition for each state and each input symbol)
-isDFA :: Automaton Symb State -> Bool
-isDFA auto =
-  let applyUnion = Map.fromListWith Set.union
-      noMultTrans = and . fmap ((< 2) . Set.size) . Map.elems . applyUnion . Map.toList . delta $ auto
-      noEpsTrans  = not $ "\\epsilon" `Set.member` usedSymbols auto
-   in noMultTrans && noEpsTrans
-
-
--- Checks if the automaton is nondeterministic
--- (eps-transition or multiple transitions for a state and a symbol)
-isNFA :: Automaton Symb State -> Bool
-isNFA = const True
-
-
--- Checks if the automaton is complete
--- (there exists a transition for each state and each input symbol)
-isComplete :: Automaton Symb State -> Bool 
-isComplete auto = isDFA auto && noAloneSt && noAloneSymb
-  where
-    noAloneSt    = null $ states auto Set.\\ availableSt auto
-    
-    symbsFromSt = Map.fromListWith Set.union . fmap (second Set.singleton) .  Map.keys . delta $ auto
-    noAloneSymb = ((length . states $ auto) == length symbsFromSt) &&
-                  (and . fmap (null . (sigma auto Set.\\)) . Map.elems $ symbsFromSt)
-
-availableSt :: Automaton Symb State -> Set State
-availableSt auto = dfs Set.empty startSt startSt
-  where
-    startSt = Set.singleton . initState $ auto
-    
-    deltaInfo :: Map State (Set State)
-    deltaInfo = Map.fromListWith Set.union . fmap (first fst) . Map.toList . delta $ auto
-    --    visitedSts -> startSts -> reachableSts -> newReachableSts
-    dfs :: Set State -> Set State -> Set State -> Set State
-    dfs started starts acc
-      | null starts = acc
-      | (from, newStarts) <- Set.deleteFindMin starts
-      , False             <- from `Set.member` started
-      , Just toSts        <- Map.lookup from deltaInfo
-          = dfs (Set.insert from started) (newStarts `Set.union` toSts) (acc `Set.union` toSts)
-      | otherwise   = dfs started (snd . Set.deleteFindMin $ starts) acc
-
-
--- Checks if the automaton is minimal 
--- (only for DFAs: the number of states is minimal)
-isMinimal :: Automaton Symb State -> Bool
-isMinimal auto
-  | isDFA auto && isComplete auto
-      = null $ (Set.fromList . equiveClasses $ auto) Set.\\ (Set.map Set.singleton . states $ auto)
-  | otherwise = False
-
-
-equiveClasses :: Automaton Symb State -> [Set State]
-equiveClasses auto = getClasses (states auto) $ go (initQueue auto) (Set.fromList $ initQueue auto)
-  where
-    revDelta = reverseDelta auto
-    -- queue -> visited_pairs -> class_table
-    go :: [(State, State)] -> Set (State, State) -> Set (State, State)
-    go []    _       = Set.empty
-    go queue visited
-      | pairsFromQueue <- Set.unions $ getPairsBy (Set.toList . sigma $ auto) revDelta <$> queue
-      , newPairs       <- pairsFromQueue Set.\\ visited
-      , currClassTable <- pairsFromQueue `Set.union` visited
-          = currClassTable `Set.union` (go (Set.toList $ newPairs) currClassTable)
-
-
--- sigmas -> reverse_delta -> one_pair_from_queue -> new_pairs_to_queue
-getPairsBy :: [Symb] -> Map (State, Symb) (Set State) -> (State, State) -> Set (State, State)
-getPairsBy []         _        _             = Set.empty
-getPairsBy s@(x : xs) revDelta el@(from, to)
-  | Just fromSet <- Map.lookup (from, x) revDelta
-  , Just toSet   <- Map.lookup (to, x) revDelta
-      = (fromSet `Set.cartesianProduct` toSet) `Set.union` (getPairsBy xs revDelta el)
-  | otherwise = getPairsBy xs revDelta el
-
-
-getClasses :: Set State -> Set (State, State) -> [Set State]
-getClasses allStates classTable = classes
-  where
-    applyUnion  = Map.fromListWith Set.union
-    
-    fromStToSet :: Map (Set State) (Set State)
-    fromStToSet = applyUnion . fmap (bimap Set.singleton Set.singleton) . Set.toList $ classTable
-    
-    classes :: [Set State]
-    classes =
-      let partOfClasses = Map.elems . applyUnion . fmap swap . Map.toList $ fromStToSet 
-          plusClass = allStates Set.\\ Set.unions partOfClasses
-       in if null plusClass then partOfClasses else plusClass : partOfClasses
-
-
-initQueue :: Automaton Symb State -> [(State, State)]
-initQueue auto = Set.toList $ notTermStSet `Set.cartesianProduct` termState auto
-  where
-    notTermStSet = states auto Set.\\ termState auto
-
-    
-reverseDelta :: Automaton Symb State -> Map (State, Symb) (Set State)
-reverseDelta = Map.fromListWith Set.union . concatMap go . Map.toList . delta
-  where
-    go :: ((q, s), Set q) -> [((q, s), Set q)]
-    go ((fromSt, symb), toStSet) = 
-      (\toSt -> ((toSt, symb), Set.singleton fromSt)) <$> Set.toList toStSet
-
 
