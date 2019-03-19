@@ -11,10 +11,8 @@ module Automaton
 import qualified Data.Map.Lazy as Map
 import qualified Data.Set      as Set
 import           Data.Char      (isSpace, isDigit)
-import           Data.Maybe     (catMaybes)
-import           Data.Bifunctor (bimap, first, second)
-import           Data.Tuple     (swap)
 import           Combinators
+
 
 type Set = Set.Set
 type Map = Map.Map
@@ -84,7 +82,7 @@ usedStatesTo :: Automaton Symb State -> Set State
 usedStatesTo = Set.unions . Map.elems . delta
 
 usedSymbols :: Automaton Symb State -> Set Symb
-usedSymbols = Set.fromList . snd . unzip . Map.keys . delta
+usedSymbols = Set.fromList . map snd . Map.keys . delta
 
 
 parseAutomaton' :: Parser Char ErrorType (Automaton Symb State)
@@ -93,11 +91,11 @@ parseAutomaton' = Automaton
   <*> (Set.fromList <$> mainParser parseState 1)
   <*> (head <$> mainParser parseState 1)
   <*> (Set.fromList <$> mainParser parseState 0)
-  <*> (Map.fromAscListWithKey concatStTo . (fmap formatDelta) <$> mainParser parseDelta 0)
+  <*> (Map.fromAscListWithKey concatStTo . fmap formatDelta <$> mainParser parseDelta 0)
   <*  notParser (like (const True))
 
 formatDelta :: Delta -> ((State, Symb), Set State)
-formatDelta (Delta st1 symb st2) = ((st1, symb), Set.singleton $ st2)
+formatDelta (Delta st1 symb st2) = ((st1, symb), Set.singleton st2)
 
 concatStTo :: (State, Symb) -> Set State -> Set State -> Set State
 concatStTo (fromSt, _) toSt1 toSt2 =

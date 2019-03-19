@@ -1,6 +1,5 @@
 {-# LANGUAGE TupleSections #-}
 
-
 module Lib
     ( isDFA
     , isNFA
@@ -94,7 +93,7 @@ equiveClasses auto = getClasses (states auto) $ go (initQueue auto) (Set.fromLis
       | pairsFromQueue <- Set.unions $ getPairsBy (Set.toList . sigma $ auto) revDelta <$> queue
       , newPairs       <- pairsFromQueue Set.\\ visited
       , currClassTable <- pairsFromQueue `Set.union` visited
-          = currClassTable `Set.union` (go (Set.toList $ newPairs) currClassTable)
+          = currClassTable `Set.union` go (Set.toList newPairs) currClassTable
 
 
 -- sigmas -> reverse_delta -> one_pair_from_queue -> new_pairs_to_queue
@@ -103,7 +102,7 @@ getPairsBy []         _        _             = Set.empty
 getPairsBy s@(x : xs) revDelta el@(from, to)
   | Just fromSet <- Map.lookup (from, x) revDelta
   , Just toSet   <- Map.lookup (to, x) revDelta
-      = (fromSet `Set.cartesianProduct` toSet) `Set.union` (getPairsBy xs revDelta el)
+      = (fromSet `Set.cartesianProduct` toSet) `Set.union` getPairsBy xs revDelta el
   | otherwise = getPairsBy xs revDelta el
 
 
