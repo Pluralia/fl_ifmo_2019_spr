@@ -82,7 +82,7 @@ isMinimal :: Automaton Symb State -> Bool
 isMinimal auto = case doComplete auto of
   Left  _       -> False
   Right comAuto ->
-    null $ (Set.fromList . equiveClasses $ auto) Set.\\ (Set.map Set.singleton . states $ comAuto)
+    null $ (Set.fromList . equiveClasses $ comAuto) Set.\\ (Set.map Set.singleton . states $ comAuto)
 
 
 equiveClasses :: Automaton Symb State -> [Set State]
@@ -139,6 +139,9 @@ reverseDelta = Map.fromListWith Set.union . concatMap go . Map.toList . delta
 
 
 ----------------------------------------------------------------------------------------------------
+bottom = "bottom"
+bottomSet = Set.singleton bottom
+
 -- return complete automaton
 doComplete :: Automaton Symb State -> Either String (Automaton Symb State)
 doComplete auto
@@ -153,9 +156,6 @@ doComplete auto
       (termState auto)
       (Map.unions [delta auto, Map.fromList addDelta, Map.fromList bottomDelta])
 
-    bottom = "bottom"
-    bottomSet = Set.singleton bottom
-
     transformStSetSymb :: (State, Set Symb) -> [(State, Symb)]
     transformStSetSymb (st, symbSet) = fmap (st,) . Set.toList $ symbSet
 
@@ -167,7 +167,7 @@ doComplete auto
 
 
 -----------------------------------------------------------------------------------------------------
--- return complete automaton
+-- return minimal automaton
 minimize :: Automaton Symb State -> Either String (Automaton Symb State)
 minimize auto
   | not $ isDFA auto = Left "isNFA"
