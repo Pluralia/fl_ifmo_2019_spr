@@ -7,6 +7,8 @@ module Lib
     , isMinimal
     , doComplete
     , minimize
+    , toDFA
+    , epsClosure
     ) where
 
 import qualified Data.Map.Lazy as Map
@@ -97,6 +99,11 @@ equiveClasses auto = getClasses (states auto) $ go (initQueue auto) (Set.fromLis
       , currClassTable <- pairsFromQueue `Set.union` visited
           = currClassTable `Set.union` go (Set.toList newPairs) currClassTable
 
+    initQueue :: Automaton Symb State -> [(State, State)]
+    initQueue auto = Set.toList $ notTermStSet `Set.cartesianProduct` termState auto
+      where
+        notTermStSet = states auto Set.\\ termState auto
+
 
 -- sigmas -> reverse_delta -> one_pair_from_queue -> new_pairs_to_queue
 getPairsBy :: [Symb] -> Map (State, Symb) (Set State) -> (State, State) -> Set (State, State)
@@ -123,12 +130,6 @@ getClasses allStates classTable = classes
        in if null plusClass then partOfClasses else plusClass : partOfClasses
 
 
-initQueue :: Automaton Symb State -> [(State, State)]
-initQueue auto = Set.toList $ notTermStSet `Set.cartesianProduct` termState auto
-  where
-    notTermStSet = states auto Set.\\ termState auto
-
-    
 reverseDelta :: Automaton Symb State -> Map (State, Symb) (Set State)
 reverseDelta = Map.fromListWith Set.union . concatMap go . Map.toList . delta
   where
@@ -205,3 +206,50 @@ removeAloneSt auto = Automaton
     removeToSt   =
       Map.mapMaybe (\toSt -> if null $ aloneSt `Set.intersection` toSt then Just toSt else Nothing)
 
+
+-----------------------------------------------------------------------------------------------------
+-- convert NKA to DKA
+toDFA :: Automaton Symb State -> Either String (Automaton Symb State)
+toDFA auto
+  | isDFA auto                          = Right auto
+  | "\\epsilon" `Set.member` sigma auto = Left "There is epsilon"
+  | otherwise                           = Right $ build initQueue (Set.fromList initQueue)
+
+initQueue :: [Set State] 
+initQueue = [Set.singleton . initState $ auto]
+
+auto = a
+  where
+    Right a = parseAutomaton "<(a), (b)> <(1), (2)> <(1)> <(2)> <(1, a, 1), (1, b, 1), (1, a, 2), (2, b, 2), (2, b, 1)>"
+
+
+getNextSet :: [State] -> Symb -> Set State
+getNextSet [] _          = Set.empty
+getNextSet (x : xs) symb = xSts `Set.union` getNextSet xs symb
+  where
+    xSts = maybe Set.empty id . Map.lookup (x, symb) . delta $ auto
+
+    -- queue -> used_states(acc) -> res_states_set
+build :: [Set State] -> Set (Set State) -> Set (Set State)
+build []       used = used
+build (x : xs) used = build queue (x `Set.insert` used)
+  where
+    symbList :: [Symb]
+    symbList = Set.toList . sigma $ auto
+    xSts :: Set State
+    xSts  = Set.unions . fmap (getNextSet (Set.toList x)) $ symbList
+    queue = if xSts `Set.member` used then xs else (xSts : xs)
+
+
+-----------------------------------------------------------------------------------------------------
+-- return epsilon-closure of the automaton
+epsClosure :: Automaton Symb State -> Automaton Symb State
+epsClosure auto
+  | "\\epsilon" `Set.member` sigma auto = auto
+  | otherwise                           = resAuto
+  where
+    resAuto =
+      let Automaton symbSet stateSet init term deltaMap = buildAuto auto undefined--epsClasses
+       in Automaton (symbSet Set.\\ Set.singleton "\\epsilon") stateSet init term deltaMap
+
+epsClasses auto = undefined
