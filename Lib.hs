@@ -208,7 +208,7 @@ removeAloneSt auto = Automaton
 
 
 -----------------------------------------------------------------------------------------------------
--- convert NKA to DKA
+-- convert NFA to DFA
 toDFA :: Automaton Symb State -> Either String (Automaton Symb State)
 toDFA auto
   | isDFA auto                          = Right auto
@@ -261,11 +261,78 @@ toDFA auto
 -- return epsilon-closure of the automaton
 epsClosure :: Automaton Symb State -> Automaton Symb State
 epsClosure auto
-  | "\\epsilon" `Set.member` sigma auto = auto
-  | otherwise                           = resAuto
+  | "\\epsilon" `Set.member` sigma auto = resAuto
+  | otherwise                           = auto
   where
-    resAuto =
-      let Automaton symbSet stateSet init term deltaMap = buildAuto auto undefined--epsClasses
-       in Automaton (symbSet Set.\\ Set.singleton "\\epsilon") stateSet init term deltaMap
+    resAuto = Automaton
+      (sigma auto Set.\\ Set.singleton "\\epsilon")
+      (states auto)
+      (initState auto)
+      (newTermStates `Set.union` termState auto)
+      (Map.unionWith Set.union (newDelta epsAvailable Map.empty) deltaNoEps)
 
-epsClasses auto = undefined
+    newTermStates = Set.fromList . fmap (fst . fst) . Map.toList $ termDelta
+      where
+        oldTermState = Set.toList . termState $ auto
+        termDelta = Map.filter (\set -> any (`Set.member` set) oldTermState) . delta $ epsAuto
+
+    epsAuto = epsAutomaton auto
+
+    deltaNoEps = Map.filterWithKey (\key -> (/= "\\epsilon") . snd . const key) . delta $ auto
+    
+    stList = Set.toList . states $ epsAuto
+    
+    epsAvailable :: [(State, Set State)]
+    epsAvailable = fmap (\st -> (st, availableStFromSt epsAuto st Set.\\ Set.singleton st)) stList
+
+    stByEverySt :: Map State (Set (Symb, Set State))
+    stByEverySt = Map.fromListWith Set.union transDelta
+      where
+        transDelta = fmap (\((from, s), to) -> (from, Set.singleton (s, to))) . Map.toList $ deltaNoEps
+
+    newDelta :: [(State, Set State)]           ->
+                 Map (State, Symb) (Set State) ->
+                 Map (State, Symb) (Set State)
+    newDelta []                 acc = acc
+    newDelta ((from, set) : xs) acc = newDelta xs (fromSetDelta `Map.union` acc)
+      where
+        fromSetDelta = Map.fromListWith Set.union . concatMap (go from) . Set.toList $ set
+        go from toEps
+          = fmap (\(symb, to) -> ((from, symb), to)) . Set.toList . maybe Set.empty id . Map.lookup toEps $ stByEverySt
+
+
+epsAutomaton :: Automaton Symb State -> Automaton Symb State
+epsAutomaton auto = Automaton
+  (Set.singleton "\\epsilon")
+  (states auto)
+  (initState auto)
+  (termState auto)
+  (Map.filterWithKey (\key -> (== "\\epsilon") . snd . const key) . delta $ auto)
+
+
+availableStFromSt :: Automaton State Symb -> State -> Set State
+availableStFromSt auto st = dfs Set.empty startSt startSt
+  where
+    startSt = Set.singleton st
+
+    deltaInfo :: Map State (Set State)
+    deltaInfo = Map.fromListWith Set.union . fmap (first fst) . Map.toList . delta $ auto
+    --    visitedSts -> startSts -> reachableSts -> newReachableSts
+    dfs :: Set State -> Set State -> Set State -> Set State
+    dfs started starts acc
+      | null starts = acc
+      | (from, newStarts) <- Set.deleteFindMin starts
+      , False             <- from `Set.member` started
+      , Just toSts        <- Map.lookup from deltaInfo
+          = dfs (Set.insert from started) (newStarts `Set.union` toSts) (acc `Set.union` toSts)
+      | otherwise   = dfs started (snd . Set.deleteFindMin $ starts) acc
+
+
+auto1 =
+  let Right a = parseAutomaton "<(a), (\\epsilon)> <(P), (Q), (Q1), (R), (R1), (R2)> <(P)> <(Q), (R)> <(P, \\epsilon, Q), (Q, a, Q1), (Q1, a, Q), (P, \\epsilon, R), (R, a, R1), (R1, a, R2), (R2, a, R)>"
+   in a
+
+
+auto =
+  let Right a = parseAutomaton "<(a), (b), (\\epsilon)> <(0), (1), (2), (3), (4)> <(0)> <(3)> <(0, a, 0), (0, b, 0), (0, a, 1), (1, \\epsilon, 4), (2, \\epsilon, 0), (2, a, 3), (3, \\epsilon, 1), (4, b, 2)>"
+   in a
