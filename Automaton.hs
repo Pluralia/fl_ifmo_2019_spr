@@ -91,7 +91,7 @@ parseAutomaton' = Automaton
   <*> (Set.fromList <$> mainParser parseState 1)
   <*> (head <$> mainParser parseState 1)
   <*> (Set.fromList <$> mainParser parseState 0)
-  <*> (Map.fromAscListWithKey concatStTo . fmap formatDelta <$> mainParser parseDelta 0)
+  <*> (Map.fromListWithKey concatStTo . fmap formatDelta <$> mainParser parseDelta 0)
   <*  notParser (like (const True))
 
 formatDelta :: Delta -> ((State, Symb), Set State)

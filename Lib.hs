@@ -213,32 +213,48 @@ toDFA :: Automaton Symb State -> Either String (Automaton Symb State)
 toDFA auto
   | isDFA auto                          = Right auto
   | "\\epsilon" `Set.member` sigma auto = Left "There is epsilon"
-  | otherwise                           = Right $ build initQueue (Set.fromList initQueue)
-
-initQueue :: [Set State] 
-initQueue = [Set.singleton . initState $ auto]
-
-auto = a
+  | otherwise                           = Right $ resAuto
   where
-    Right a = parseAutomaton "<(a), (b)> <(1), (2)> <(1)> <(2)> <(1, a, 1), (1, b, 1), (1, a, 2), (2, b, 2), (2, b, 1)>"
+    resAuto = Automaton
+      (sigma auto)
+      (union2OneSt `Set.map` usedSt) 
+      (initState auto)
+      (Set.unions . Set.toList . Set.map getTermState . termState $ auto)
+      usedDelta   
 
+    (usedSt, usedDelta) = dfaDelta initQueue (Set.fromList initQueue, Map.empty)
+    
+    union2OneSt :: Set State -> State
+    union2OneSt = concat . Set.toList
+    
+    getTermState :: State -> Set State
+    getTermState st = Set.map union2OneSt . Set.filter (st `Set.member`) $ usedSt
 
-getNextSet :: [State] -> Symb -> Set State
-getNextSet [] _          = Set.empty
-getNextSet (x : xs) symb = xSts `Set.union` getNextSet xs symb
-  where
-    xSts = maybe Set.empty id . Map.lookup (x, symb) . delta $ auto
+    initQueue :: [Set State] 
+    initQueue = [Set.singleton . initState $ auto]
 
-    -- queue -> used_states(acc) -> res_states_set
-build :: [Set State] -> Set (Set State) -> Set (Set State)
-build []       used = used
-build (x : xs) used = build queue (x `Set.insert` used)
-  where
+    getNextSet :: [State] -> Symb -> Set State
+    getNextSet [] _          = Set.empty
+    getNextSet (x : xs) symb = xSts `Set.union` getNextSet xs symb
+      where
+        xSts = maybe Set.empty id . Map.lookup (x, symb) . delta $ auto
+
+    getDelta :: [State] -> Symb -> ((State, Symb), Set State)
+    getDelta sts symb = ((concat sts, symb), Set.singleton . union2OneSt $ getNextSet sts symb)
+
     symbList :: [Symb]
     symbList = Set.toList . sigma $ auto
-    xSts :: Set State
-    xSts  = Set.unions . fmap (getNextSet (Set.toList x)) $ symbList
-    queue = if xSts `Set.member` used then xs else (xSts : xs)
+    
+    -- queue -> used_states -> acc_delta -> delta
+    dfaDelta :: [Set State]                   ->
+                (Set (Set State), Map (State, Symb) (Set State)) ->
+                (Set (Set State), Map (State, Symb) (Set State))
+    dfaDelta []       res         = res
+    dfaDelta (x : xs) (used, acc) = dfaDelta queue (x `Set.insert` used, xDeltas `Map.union` acc)
+      where
+        xSts    = Set.unions . fmap (getNextSet (Set.toList x)) $ symbList
+        queue   = if xSts `Set.member` used then xs else (xSts : xs)
+        xDeltas = Map.fromList . fmap (getDelta (Set.toList x)) $ symbList
 
 
 -----------------------------------------------------------------------------------------------------
