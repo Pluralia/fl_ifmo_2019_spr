@@ -20,6 +20,7 @@ module Combinators
 import Prelude hiding (seq)
 import Control.Applicative
 import Data.List (sort, partition)
+import Data.Char (isSpace)
 
 
 -- number of the row and the column
@@ -210,3 +211,40 @@ notParser pars = Parser $ \s ->
     Left _  -> Right (s, ())
     Right _ -> runParser empty s
 
+------------------------------------------------------------------------------------------------------
+
+data Assoc = LAssoc -- left associativity
+           | RAssoc -- right associativity
+           | NAssoc -- not associative
+
+-- General parser combinator for expressions
+-- Binary operators are listed in the order of precedence (from lower to higher)
+-- Binary operators on the same level of precedence have the same associativity
+-- Binary operator is specified with a parser for the operator itself and a semantic function to apply to the operands
+expression :: [(Assoc, [(Parser Char ErrorType b, a -> a -> a)])] -> 
+              Parser Char ErrorType a ->
+              Parser Char ErrorType a
+expression []                  primary = primary
+expression ((assoc, ops) : xs) primary = expression xs (goAssoc assoc ops primary)
+
+goAssoc :: Assoc ->
+           [(Parser Char ErrorType b, a -> a -> a)] ->
+           Parser Char ErrorType a -> Parser Char ErrorType a
+goAssoc _     []                   primary = primary
+goAssoc assoc ((parseOp, op) : xs) primary = Parser $ \input ->
+  runParser (go $ runParser (parseOp <* parseSpaces) input) input
+  where
+    go = either
+      (const $ goAssoc assoc xs primary)
+      (const $ let currParser = goAssoc assoc [(parseOp, op)] primary
+                in case assoc of
+                     LAssoc -> op <$> currParser <* parseSpaces <*> primary
+                     RAssoc -> op <$> primary <* parseSpaces <*> currParser
+                     NAssoc -> op <$> currParser <* parseSpaces <*> currParser)
+
+runParserUntilEof :: Parser Char ErrorType a -> (t str) -> Either String ok 
+runParserUntilEof p inp = 
+  either (Left . id) (\(rest, ok) -> if null rest then Right ok else Left "Expected eof") (runParser p inp)
+
+parseSpaces :: Parser Char ErrorType String
+parseSpaces = some (like isSpace)
