@@ -2,7 +2,7 @@ module Expression where
 
 import Combinators
 import Text.Printf
-import Safe (readMay)
+import Data.Char (isDigit, isSpace)
 
 data Operator = Pow
               | Mul
@@ -21,6 +21,9 @@ data Operator = Pow
 -- Simplest abstract syntax tree for expressions: only binops are allowed
 data EAst a = BinOp Operator (EAst a) (EAst a)
             | Primary a
+
+data ExprError = ErrorRest
+  deriving (Show)
 
 instance Show Operator where
   show Pow   = "^"
@@ -113,63 +116,81 @@ parseDisj = ignore2 Disj
   <$> like (== '|')
   <*> like (== '|')
 
+parseSpaces :: Parser Char ErrorType String--(EAst Integer)
+parseSpaces = some (like isSpace)
+
 
 -- Simplest abstract syntax tree for expressions: only binops are allowed
 parsePrimary :: Parser Char ErrorType (EAst Integer)
 parsePrimary = Primary . read <$>
-  some (like (`elem` ['0'..'9']))
+  some (like isDigit)
+
+parseAtomRule :: Parser Char ErrorType (EAst Integer)
+parseAtomRule = parsePrimary
+  <|> parseOrRule
 
 parseOrRule :: Parser Char ErrorType (EAst Integer)
-parseOrRule = (flip BinOp
-    <$> parseAndRule
-    <*> parseDisj
+parseOrRule = (BinOp <$>
+        parseDisj
+    <*  parseSpaces
+    <*> parseAndRule
+    <*  parseSpaces
     <*> parseOrRule)
-  <|> parsePrimary
+  <|> parseAndRule
 
 parseAndRule :: Parser Char ErrorType (EAst Integer)
-parseAndRule = (flip BinOp
-    <$> parseOrdRule
-    <*> parseConj
+parseAndRule = (BinOp <$>
+        parseConj
+    <*  parseSpaces
+    <*> parseOrdRule
+    <*  parseSpaces
     <*> parseAndRule)
-  <|> parsePrimary
+  <|> parseOrdRule
 
 parseOrdRule :: Parser Char ErrorType (EAst Integer)
-parseOrdRule = (flip BinOp
-    <$> parseOrdRule
-    <*> (parseEq <|> parseNeq <|> parseLe <|> parseLt <|> parseGe <|> parseGt)
+parseOrdRule = (BinOp <$>
+        (parseEq <|> parseNeq <|> parseLe <|> parseLt <|> parseGe <|> parseGt)
+    <*  parseSpaces
+    <*> parseOrdRule
+    <*  parseSpaces
     <*> parseOrdRule)
-  <|> parsePrimary
+  <|> parseSumRule
 
 parseSumRule :: Parser Char ErrorType (EAst Integer)
-parseSumRule = (flip BinOp
-    <$> parseSumRule
-    <*> (parseSum <|> parseMinus)
+parseSumRule = (BinOp <$>
+        (parseSum <|> parseMinus)
+    <*  parseSpaces
+    <*> parseSumRule
+    <*  parseSpaces
     <*> parseMulRule)
-  <|> parsePrimary
+  <|> parseMulRule
 
 parseMulRule :: Parser Char ErrorType (EAst Integer)
-parseMulRule = (flip BinOp
-    <$> parseMulRule
-    <*> (parseMul <|> parseDiv)
+parseMulRule = (BinOp <$>
+        (parseMul <|> parseDiv)
+    <*  parseSpaces
+    <*> parseMulRule
+    <*  parseSpaces
     <*> parsePowRule)
-  <|> parsePrimary
+  <|> parsePowRule
 
 parsePowRule :: Parser Char ErrorType (EAst Integer)
-parsePowRule = (flip BinOp
-    <$> parsePrimary
-    <*> parsePow
+parsePowRule = (BinOp <$>
+        parsePow
+    <*  parseSpaces
+    <*> parseAtomRule
+    <*  parseSpaces
     <*> parsePowRule)
   <|> parsePrimary
 
 
 parseExpression' :: Parser Char ErrorType (EAst Integer)
-parseExpression' = parseOrRule
-
+parseExpression' = parseAtomRule
+  <*  notParser (like (const True))
 
 str2Batch :: String -> [Batch Char]
 str2Batch input = concat $
   (\(l, symbs) -> (\(n, symb) -> Batch symb (l, n)) <$> zip [1..] symbs) <$> zip [1..] (lines input)
-
 
 err2str :: [(ErrorType, Holder)] -> String
 err2str = concatMap errType2str
