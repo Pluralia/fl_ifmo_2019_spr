@@ -15,6 +15,7 @@ module Combinators
     , keywords 
     , success
     , notParser
+    , tokList
     ) where
 
 import Prelude hiding (seq)

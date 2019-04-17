@@ -62,134 +62,123 @@ show (BinOp Conj (BinOp Pow (Primary 1) (BinOp Sum (Primary 2) (Primary 3))) (Pr
 |_4
 -}
 
-ignore2 :: a -> b -> c -> a
-ignore2 res _ _ = res
 
-parsePow :: Parser Char ErrorType Operator
-parsePow = const Pow <$> like (== '^')
-
-parseMul :: Parser Char ErrorType Operator
-parseMul = const Mul <$> like (== '*')
-
-parseDiv :: Parser Char ErrorType Operator
-parseDiv = const Div <$> like (== '/')
-
-parseSum :: Parser Char ErrorType Operator
-parseSum = const Sum <$> like (== '+')
-
-parseMinus :: Parser Char ErrorType Operator
-parseMinus = const Minus <$> like (== '-')
-
-parseEq :: Parser Char ErrorType Operator
-parseEq = ignore2 Eq
-  <$> like (== '=')
-  <*> like (== '=')
-
-parseNeq :: Parser Char ErrorType Operator
-parseNeq = ignore2 Neq
-  <$> like (== '\\')
-  <*> like (== '=')
-
-parseLe :: Parser Char ErrorType Operator
-parseLe = ignore2 Le
-  <$> like (== '<')
-  <*> like (== '=')
-
-parseLt :: Parser Char ErrorType Operator
-parseLt = const Lt <$> like (== '<')
-
-parseGe :: Parser Char ErrorType Operator
-parseGe = ignore2 Ge
-  <$> like (== '>')
-  <*> like (== '=')
-
-parseGt :: Parser Char ErrorType Operator
-parseGt = const Gt <$> like (== '>')
-
-parseConj :: Parser Char ErrorType Operator
-parseConj = ignore2 Conj
-  <$> like (== '&')
-  <*> like (== '&')
-
-parseDisj :: Parser Char ErrorType Operator
-parseDisj = ignore2 Disj
-  <$> like (== '|')
-  <*> like (== '|')
-
-parseSpaces :: Parser Char ErrorType String--(EAst Integer)
-parseSpaces = some (like isSpace)
-
-
--- Simplest abstract syntax tree for expressions: only binops are allowed
+-- helpers
 parsePrimary :: Parser Char ErrorType (EAst Integer)
 parsePrimary = Primary . read <$>
   some (like isDigit)
 
-parseAtomRule :: Parser Char ErrorType (EAst Integer)
-parseAtomRule = parsePrimary
-  <|> parseOrRule
+parseSpaces :: Parser Char ErrorType String
+parseSpaces = some (like isSpace)
 
+parseLbr :: Parser Char ErrorType Char
+parseLbr = like (== '(')
+
+parseRbr :: Parser Char ErrorType Char
+parseRbr = like (== ')')
+
+
+-- Simplest abstract syntax tree for expressions: only binops are allowed
 parseOrRule :: Parser Char ErrorType (EAst Integer)
-parseOrRule = (BinOp <$>
-        parseDisj
-    <*  parseSpaces
-    <*> parseAndRule
-    <*  parseSpaces
-    <*> parseOrRule)
-  <|> parseAndRule
+parseOrRule = do
+  as <- many $ do
+    x  <- parseAndRule
+    parseSpaces
+    tokList "||"
+    parseSpaces
+    return x
+  b  <- parseAndRule
+  return $ foldr (\a acc -> BinOp Disj a acc) b as
+
 
 parseAndRule :: Parser Char ErrorType (EAst Integer)
-parseAndRule = (BinOp <$>
-        parseConj
-    <*  parseSpaces
-    <*> parseOrdRule
-    <*  parseSpaces
-    <*> parseAndRule)
-  <|> parseOrdRule
+parseAndRule = do
+  as <- many $ do
+    x  <- parseOrdRule
+    parseSpaces
+    tokList "&&"
+    parseSpaces
+    return x
+  b  <- parseOrdRule
+  return $ foldr (\a acc -> BinOp Conj a acc) b as
+
 
 parseOrdRule :: Parser Char ErrorType (EAst Integer)
-parseOrdRule = (BinOp <$>
-        (parseEq <|> parseNeq <|> parseLe <|> parseLt <|> parseGe <|> parseGt)
-    <*  parseSpaces
-    <*> parseOrdRule
-    <*  parseSpaces
-    <*> parseOrdRule)
+parseOrdRule = (do
+    let str2Op op = case op of
+                      "==" -> Eq
+                      "/=" -> Neq
+                      "<=" -> Le
+                      "<"  -> Lt
+                      ">=" -> Ge
+                      ">"  -> Gt
+    a <- parseSumRule
+    parseSpaces
+    op <- tokList "==" <|> tokList "/="
+      <|> tokList "<=" <|> tokList "<"
+      <|> tokList ">=" <|> tokList ">"
+    parseSpaces
+    b  <- parseSumRule
+    return $ BinOp (str2Op op) a b)
   <|> parseSumRule
 
+
 parseSumRule :: Parser Char ErrorType (EAst Integer)
-parseSumRule = (BinOp <$>
-        (parseSum <|> parseMinus)
-    <*  parseSpaces
-    <*> parseSumRule
-    <*  parseSpaces
-    <*> parseMulRule)
-  <|> parseMulRule
+parseSumRule = do
+  let str2Op op = case op of
+                    "+" -> Sum
+                    "-" -> Minus
+  as <- many $ do
+    x  <- parseProdRule
+    parseSpaces
+    op <- tokList "+" <|> tokList "-"
+    parseSpaces
+    return (x, op)
+  b  <- parseProdRule
+  return $ foldr (\(a, op) acc -> BinOp (str2Op op) a acc) b as
 
-parseMulRule :: Parser Char ErrorType (EAst Integer)
-parseMulRule = (BinOp <$>
-        (parseMul <|> parseDiv)
-    <*  parseSpaces
-    <*> parseMulRule
-    <*  parseSpaces
-    <*> parsePowRule)
-  <|> parsePowRule
 
-parsePowRule :: Parser Char ErrorType (EAst Integer)
-parsePowRule = (BinOp <$>
-        parsePow
-    <*  parseSpaces
-    <*> parseAtomRule
-    <*  parseSpaces
-    <*> parsePowRule)
-  <|> parsePrimary
+parseProdRule :: Parser Char ErrorType (EAst Integer)
+parseProdRule = do
+  let str2Op op = case op of
+                    "*" -> Mul
+                    "/" -> Div
+  as <- many $ do
+    x  <- parseDegRule
+    parseSpaces
+    op <- tokList "*" <|> tokList "/"
+    parseSpaces
+    return (x, op)
+  b  <- parseDegRule
+  return $ foldr (\(a, op) acc -> BinOp (str2Op op) a acc) b as
 
+
+parseDegRule :: Parser Char ErrorType (EAst Integer)
+parseDegRule = do
+  as <- many $ do
+    x  <- parseFinRule
+    parseSpaces
+    tokList "^"
+    parseSpaces
+    return x
+  b  <- parseFinRule
+  return $ foldr (\a acc -> BinOp Pow a acc) b as
+
+
+parseFinRule :: Parser Char ErrorType (EAst Integer)
+parseFinRule = parsePrimary
+  <|> (parseLbr
+     *> parseOrRule
+    <*  parseRbr)
+
+------------------------------------------------------------------------------------------------------
 
 parseExpression' :: Parser Char ErrorType (EAst Integer)
-parseExpression' = parseAtomRule
+parseExpression' = parseOrRule
   <*  notParser (like (const True))
 
-str2Batch :: String -> [Batch Char]
-str2Batch input = concat $
+str2batch :: String -> [Batch Char]
+str2batch input = concat $
   (\(l, symbs) -> (\(n, symb) -> Batch symb (l, n)) <$> zip [1..] symbs) <$> zip [1..] (lines input)
 
 err2str :: [(ErrorType, Holder)] -> String
@@ -201,5 +190,4 @@ err2str = concatMap errType2str
 -- Change the signature if necessary
 parseExpression :: String -> Either String (EAst Integer)
 parseExpression =
-  either (Left . err2str) (Right . snd) . runParser parseExpression' . str2Batch
-
+  either (Left . err2str) (Right . snd) . runParser parseExpression' . str2batch
