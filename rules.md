@@ -4,5 +4,7 @@
  - Ord  -> Sum (== | /= | <= | < | >= | >) Sum
  - Sum  -> Prod ((+ | -) Prod)\*
  - Prod -> Deg ((\* | /) Deg)\*
- - Deg  -> (End ^)\* End
- - End  -> \sum | '(' Or ')'
+ - Deg  -> (Fin ^)\* Fin
+ - Fin  -> \sum | '(' Or ')'
+
+Or стартовое
