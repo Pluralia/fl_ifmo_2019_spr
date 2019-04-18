@@ -73,7 +73,7 @@ parseExpression input =
 -- Calculates the value of the input expression
 executeExpression :: String -> Either String Integer
 executeExpression input = 
-  runParserUntilEof (expression undefined undefined) input
+  runParserUntilEof (expression execSpec execPrimary) input
 
 ------------------------------------------------------------------------------------------------------
 
@@ -148,7 +148,6 @@ err2str = concatMap errType2str
     errType2str (err, (l, n)) = show err ++ ":" ++ show l ++ ":" ++ show n ++ "\n"
 
 ------------------------------------------------------------------------------------------------------
-
 -- helpers
 parseSpaces :: Parser Char ErrorType String
 parseSpaces = some (like isSpace)
@@ -159,6 +158,7 @@ parseLbr = like (== '(')
 parseRbr :: Parser Char ErrorType Char
 parseRbr = like (== ')')
 
+------------------------------------------------------------------------------------------------------
 
 parsePrimary :: Parser Char ErrorType (EAst Integer)
 parsePrimary = Primary . read <$>
@@ -184,4 +184,39 @@ spec = [ (RAssoc, [ (tokList "||", BinOp Disj)
        , (RAssoc, [ (tokList "^", BinOp Pow)  
                   ])
        ]
+
+------------------------------------------------------------------------------------------------------
+
+i2b :: Integer -> Bool
+i2b 0 = True
+i2b _ = False
+
+b2i :: Bool -> Integer
+b2i True  = 1
+b2i False = 0
+
+execPrimary :: Parser Char ErrorType Integer
+execPrimary = read <$>
+  some (like isDigit)
+
+execSpec = [ (RAssoc, [ (tokList "||", (\a b -> b2i $ i2b a || i2b b))
+                      ])
+           , (RAssoc, [ (tokList "&&", (\a b -> b2i $ i2b a && i2b b))
+                      ])
+           , (NAssoc, [ (tokList "==", (\a b -> b2i $ i2b a == i2b b))
+                      , (tokList "/=", (\a b -> b2i $ i2b a /= i2b b))
+                      , (tokList "<=", (\a b -> b2i $ i2b a <= i2b b))
+                      , (tokList "<",  (\a b -> b2i $ i2b a <  i2b b))
+                      , (tokList ">=", (\a b -> b2i $ i2b a >= i2b b))
+                      , (tokList ">",  (\a b -> b2i $ i2b a >  i2b b))
+                      ])
+           , (LAssoc, [ (tokList "+", (+))
+                      , (tokList "-", (-))
+                      ])
+           , (LAssoc, [ (tokList "*", (*))
+                      , (tokList "/", div)
+                      ])
+           , (RAssoc, [ (tokList "^", (^))  
+                      ])
+           ]
 
