@@ -4,3 +4,4 @@
 ./Main tests/3
 ./Main tests/4
 ./Main tests/5
+./clean.sh

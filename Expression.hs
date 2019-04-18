@@ -128,14 +128,14 @@ parseSumRule = do
   let str2Op op = case op of
                     "+" -> Sum
                     "-" -> Minus
-  as <- many $ do
-    x  <- parseProdRule
+  a  <- parseProdRule  
+  bs <- many $ do
     parseSpaces
     op <- tokList "+" <|> tokList "-"
     parseSpaces
+    x  <- parseProdRule
     return (x, op)
-  b  <- parseProdRule
-  return $ foldr (\(a, op) acc -> BinOp (str2Op op) a acc) b as
+  return $ foldr (\(b, op) acc -> BinOp (str2Op op) acc b) a bs
 
 
 parseProdRule :: Parser Char ErrorType (EAst Integer)
@@ -143,14 +143,14 @@ parseProdRule = do
   let str2Op op = case op of
                     "*" -> Mul
                     "/" -> Div
-  as <- many $ do
-    x  <- parseDegRule
+  a  <- parseDegRule  
+  bs <- many $ do
     parseSpaces
     op <- tokList "*" <|> tokList "/"
     parseSpaces
+    x  <- parseDegRule
     return (x, op)
-  b  <- parseDegRule
-  return $ foldr (\(a, op) acc -> BinOp (str2Op op) a acc) b as
+  return $ foldr (\(b, op) acc -> BinOp (str2Op op) acc b) a bs
 
 
 parseDegRule :: Parser Char ErrorType (EAst Integer)
