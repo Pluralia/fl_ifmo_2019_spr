@@ -10,6 +10,7 @@ main = do
   mapM_
     (\fileName -> do
         input <- readFile fileName
+        putStrLn input
         let a = parseExpression input
         let r = executeExpression input
         putStrLn $ printf "Parsing %s\n" fileName
