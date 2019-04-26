@@ -15,7 +15,7 @@ main = do
         let r = executeExpression input
         putStrLn $ printf "Parsing %s\n" fileName
         putStrLn $ either id show a
-        putStrLn $ either id show r
+        putStrLn $ either id (("result: " ++) . show) r
         putStrLn ""
     )
     fileNames
