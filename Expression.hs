@@ -69,7 +69,7 @@ parsePrimary = Primary . read <$>
   some (like isDigit)
 
 parseSpaces :: Parser Char ErrorType String
-parseSpaces = some (like isSpace)
+parseSpaces = many (like isSpace)
 
 parseLbr :: Parser Char ErrorType Char
 parseLbr = like (== '(')
