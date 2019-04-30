@@ -5,6 +5,6 @@
  - Sum  -> Prod ((+ | -) Prod)\*
  - Prod -> Deg ((\* | /) Deg)\*
  - Deg  -> (Fin ^)\* Fin
- - Fin  -> \sum | '(' Or ')'
+ - Fin  -> \sum | (- | !) \sum | '(' Or ')'
 
 Or стартовое

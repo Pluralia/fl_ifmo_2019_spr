@@ -3,6 +3,7 @@ module Expression where
 import Combinators
 import Text.Printf
 import Data.Char (isDigit, isSpace)
+import Data.Foldable (foldl')
 
 data Operator = Pow
               | Mul
@@ -135,7 +136,7 @@ parseSumRule = do
     parseSpaces
     x  <- parseProdRule
     return (x, op)
-  return $ foldr (\(b, op) acc -> BinOp (str2Op op) acc b) a bs
+  return $ foldl' (\acc (b, op) -> BinOp (str2Op op) acc b) a bs
 
 
 parseProdRule :: Parser Char ErrorType (EAst Integer)
@@ -150,7 +151,7 @@ parseProdRule = do
     parseSpaces
     x  <- parseDegRule
     return (x, op)
-  return $ foldr (\(b, op) acc -> BinOp (str2Op op) acc b) a bs
+  return $ foldl' (\acc (b, op) -> BinOp (str2Op op) acc b) a bs
 
 
 parseDegRule :: Parser Char ErrorType (EAst Integer)
