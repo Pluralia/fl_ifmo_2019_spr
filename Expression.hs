@@ -3,6 +3,7 @@ module Expression where
 import Combinators
 import Text.Printf
 import Data.Char (isDigit, isSpace)
+import Data.Foldable (foldl')
 
 data Operator = Pow
               | Mul
@@ -103,7 +104,7 @@ expression ops primary = go ops primary
         parseSpaces
         x  <- parseNextOp assocRest
         return (x, op)
-      return $ foldr (\(b, op) acc -> op acc b) a bs
+      return $ foldl' (\acc (b, op) -> op acc b) a bs
    
     go ((RAssoc, opsInfo@(_ : _)) : assocRest) primary = do
       as <- many $ do
@@ -188,8 +189,8 @@ spec = [ (RAssoc, [ (tokList "||", BinOp Disj)
 ------------------------------------------------------------------------------------------------------
 
 i2b :: Integer -> Bool
-i2b 0 = True
-i2b _ = False
+i2b 0 = False
+i2b _ = True
 
 b2i :: Bool -> Integer
 b2i True  = 1
