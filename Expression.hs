@@ -4,6 +4,7 @@ import Combinators
 import Text.Printf
 import Data.Char (isDigit, isSpace)
 import Data.Either (fromLeft, fromRight)
+import Data.Foldable (foldl')
 
 data Operator = Pow
               | Mul
@@ -76,18 +77,17 @@ show (BinOp Conj (BinOp Pow (Primary 1) (BinOp Sum (Primary 2) (Primary 3))) (Pr
 -- Constructs AST for the input expression
 parseExpression :: String -> Either String (EAst Integer)
 parseExpression input = 
-  runParserUntilEof (expression parseSpec parseAtom) input
+  runParserUntilEof (expression parseBinOp parseUnOp parseAtom) input
 
 -- Change the signature if necessary
 -- Calculates the value of the input expression
-executeExpression :: String -> Either String Integer -- (EAst Integer)
+executeExpression :: String -> Either String (EAst Integer)
 executeExpression input = 
-  runParserUntilEof (expression execSpec execAtom) input
+  runParserUntilEof (expression execBinOp execUnOp execAtom) input
 
 ------------------------------------------------------------------------------------------------------
 
-data Assoc = UAssoc -- unary
-           | LAssoc -- left associativity
+data Assoc = LAssoc -- left associativity
            | RAssoc -- right associativity
            | NAssoc -- not associative
 
@@ -96,68 +96,64 @@ data Assoc = UAssoc -- unary
 -- Binary operators are listed in the order of precedence (from lower to higher)
 -- Binary operators on the same level of precedence have the same associativity
 -- Binary operator is specified with a parser for the operator itself and a semantic function to apply to the operands
-expression :: [(Assoc, [(Parser Char ErrorType b, Either (a -> a) (a -> a -> a))])] -> 
+expression :: [(Assoc, [(Parser Char ErrorType b, a -> a -> a)])] -> 
+              [(Parser Char ErrorType b, a -> a)] ->
               Parser Char ErrorType a ->
               Parser Char ErrorType a
-expression ops primary = go ops primary
+expression binOps unOps primary = go binOps unOps primary
   where
-    str2UnOp :: (Parser Char ErrorType b, Either (a -> a) (a -> a -> a)) ->
-                Parser Char ErrorType (a -> a)
-    str2UnOp (parser, output) = parser >> (return . fromLeft undefined $ output)
+    str2op :: (Parser Char ErrorType b, f) ->
+                Parser Char ErrorType f
+    str2op (parser, output) = parser >> return output
     
-    str2BinOp :: (Parser Char ErrorType b, Either (a -> a) (a -> a -> a)) ->
-                Parser Char ErrorType (a -> a -> a)
-    str2BinOp (parser, output) = parser >> (return . fromRight undefined $ output)
-   
-    parseUnOp :: [(Parser Char ErrorType b, Either (a -> a) (a -> a -> a))] ->
-                Parser Char ErrorType (a -> a)
-    parseUnOp = foldr1 (flip (<|>)) . fmap str2UnOp
-    
-    parseBinOp :: [(Parser Char ErrorType b, Either (a -> a) (a -> a -> a))] ->
-                  Parser Char ErrorType (a -> a -> a)
-    parseBinOp = foldr1 (flip (<|>)) . fmap str2BinOp
+    parseOp :: [(Parser Char ErrorType b, f)] ->
+                  Parser Char ErrorType f
+    parseOp = foldr1 (flip (<|>)) . fmap str2op
 
-    parseNextOp assocRest = go assocRest primary
-    
-    go ((UAssoc, opsInfo@(_ : _)) : assocRest) pimary = do
-      op <- parseUnOp opsInfo
-      parseSpaces
-      x  <- parseNextOp assocRest
-      return $ op x
+    parseNextOp assocRest = go assocRest unOps primary
 
-    go ((LAssoc, opsInfo@(_ : _)) : assocRest) primary = do
+    go ((LAssoc, opsInfo@(_ : _)) : assocRest) _ primary = do
       a  <- parseNextOp assocRest
       bs <- many $ do
         parseSpaces
-        op <- parseBinOp opsInfo
+        op <- parseOp opsInfo
         parseSpaces
         x  <- parseNextOp assocRest
         return (x, op)
-      return $ foldr (\(b, op) acc -> op acc b) a bs
+      return $ foldl' (\acc (b, op) -> op acc b) a bs
    
-    go ((RAssoc, opsInfo@(_ : _)) : assocRest) primary = do
+    go ((RAssoc, opsInfo@(_ : _)) : assocRest) _ primary = do
       as <- many $ do
         x  <- parseNextOp assocRest
         parseSpaces
-        op <- parseBinOp opsInfo
+        op <- parseOp opsInfo
         parseSpaces
         return (x, op)
       b  <- parseNextOp assocRest
       return $ foldr (\(a, op) bcc -> op a bcc) b as
 
-    go ((NAssoc, opsInfo@(_ : _)) : assocRest) primary = (do
+    go ((NAssoc, opsInfo@(_ : _)) : assocRest) _ primary = (do
         a  <- parseNextOp assocRest
         parseSpaces
-        op <- parseBinOp opsInfo
+        op <- parseOp opsInfo
         parseSpaces
         b  <- parseNextOp assocRest
         return $ op a b)
       <|> parseNextOp assocRest
  
-    go _ primary = primary
+    go _ unOps primary =
+      -- number || variable
+          primary
+      -- brackets
       <|> (parseLbr
-         *> parseNextOp ops
+         *> parseNextOp binOps
         <*  parseRbr)
+      -- unary operation
+      <|> (do
+        op <- parseOp unOps
+        parseSpaces
+        x  <- parseNextOp binOps
+        return $ op x)
 
 
 runParserUntilEof :: Parser Char ErrorType ok -> String -> Either String ok 
@@ -221,64 +217,78 @@ parseVariable = do
 parseAtom :: Parser Char ErrorType (EAst Integer)
 parseAtom = parseNumber <|> parseVariable
 
-parseSpec = [ (RAssoc, [ (tokList "||", Right (BinOp Disj))
-                       ])
-            , (RAssoc, [ (tokList "&&", Right (BinOp Conj))
-                       ])
-            , (NAssoc, [ (tokList "==", Right (BinOp Eq))
-                       , (tokList "/=", Right (BinOp Neq))
-                       , (tokList "<" , Right (BinOp Lt))
-                       , (tokList "<=", Right (BinOp Le))
-                       , (tokList ">" , Right (BinOp Gt))
-                       , (tokList ">=", Right (BinOp Ge))
-                       ])
-            , (LAssoc, [ (tokList "+", Right (BinOp Sum))
-                       , (tokList "-", Right (BinOp Minus))
-                       ])
-            , (LAssoc, [ (tokList "*", Right (BinOp Mul))
-                       , (tokList "/", Right (BinOp Div))
-                       ])
-            , (RAssoc, [ (tokList "^", Right (BinOp Pow)) 
-                       ])
-            , (UAssoc, [ (tokList "-", Left (Unary Neg))
-                       , (tokList "!", Left (Unary Not))
-                       ])
+parseBinOp = [ (RAssoc, [ (tokList "||", BinOp Disj)
+                        ])
+             , (RAssoc, [ (tokList "&&", BinOp Conj)
+                        ])
+             , (NAssoc, [ (tokList "==", BinOp Eq)
+                        , (tokList "/=", BinOp Neq)
+                        , (tokList "<", BinOp Lt)
+                        , (tokList "<=", BinOp Le)
+                        , (tokList ">", BinOp Gt)
+                        , (tokList ">=", BinOp Ge)
+                        ])
+             , (LAssoc, [ (tokList "+", BinOp Sum)
+                        , (tokList "-", BinOp Minus)
+                        ])
+             , (LAssoc, [ (tokList "*", BinOp Mul)
+                        , (tokList "/", BinOp Div)
+                        ])
+             , (RAssoc, [ (tokList "^", BinOp Pow)  
+                        ])
+             ]
+
+parseUnOp = [ (tokList "-", Unary Neg)
+            , (tokList "!", Unary Not)
             ]
 
 ------------------------------------------------------------------------------------------------------
 
 i2b :: Integer -> Bool
-i2b 0 = True
-i2b _ = False
+i2b 0 = False
+i2b _ = True
 
 b2i :: Bool -> Integer
 b2i True  = 1
 b2i False = 0
 
-execAtom :: Parser Char ErrorType Integer
-execAtom = read <$> some (like isDigit)
+execAtom :: Parser Char ErrorType (EAst Integer)
+execAtom = parseAtom
 
-execSpec = [ (RAssoc, [ (tokList "||", Right (\a b -> b2i $ i2b a || i2b b))
-                      ])
-           , (RAssoc, [ (tokList "&&", Right (\a b -> b2i $ i2b a && i2b b))
-                      ])
-           , (NAssoc, [ (tokList "==", Right (\a b -> b2i $ a == b))
-                      , (tokList "/=", Right (\a b -> b2i $ a /= b))
-                      , (tokList "<" , Right (\a b -> b2i $ a <  b))
-                      , (tokList "<=", Right (\a b -> b2i $ a <= b))
-                      , (tokList ">" , Right (\a b -> b2i $ a >  b))
-                      , (tokList ">=", Right (\a b -> b2i $ a >= b))
-                      ])
-           , (LAssoc, [ (tokList "+", Right (+))
-                      , (tokList "-", Right (-))
-                      ])
-           , (LAssoc, [ (tokList "*", Right (*))
-                      , (tokList "/", Right div)
-                      ])
-           , (RAssoc, [ (tokList "^", Right (^))  
-                      ])
-           , (UAssoc, [ (tokList "-", Left (0 -))
-                      , (tokList "!", Left (b2i . not . i2b))
-                      ])
+execBinOp = [ (RAssoc, [ (tokList "||", execBinOp' Disj (\a b -> b2i $ i2b a || i2b b))
+                       ])
+            , (RAssoc, [ (tokList "&&", execBinOp' Conj (\a b -> b2i $ i2b a && i2b b))
+                       ])
+            , (NAssoc, [ (tokList "==", execBinOp' Eq  (\a b -> b2i $ a == b))
+                       , (tokList "/=", execBinOp' Neq (\a b -> b2i $ a /= b))
+                       , (tokList "<",  execBinOp' Lt  (\a b -> b2i $ a <  b))
+                       , (tokList "<=", execBinOp' Le (\a b -> b2i $ a <= b))
+                       , (tokList ">",  execBinOp' Gt  (\a b -> b2i $ a >  b))
+                       , (tokList ">=", execBinOp' Ge (\a b -> b2i $ a >= b))
+                       ])
+            , (LAssoc, [ (tokList "+", execBinOp' Sum   (+))
+                       , (tokList "-", execBinOp' Minus (-))
+                       ])
+            , (LAssoc, [ (tokList "*", execBinOp' Mul (*))
+                       , (tokList "/", execBinOp' Div div)
+                       ])
+            , (RAssoc, [ (tokList "^", execBinOp' Pow (^))  
+                       ])
+            ]
+  where
+    execBinOp' :: Operator -> 
+                  (Integer -> Integer -> Integer) -> 
+                  EAst Integer -> EAst Integer -> EAst Integer
+    execBinOp' _  op (Primary a) (Primary b) = Primary $ op a b
+    execBinOp' op _  a           b           = BinOp op a b
+
+execUnOp = [ (tokList "-", execUnOp' Neg (0 -))
+           , (tokList "!", execUnOp' Not (b2i . not . i2b))
            ]
+  where
+    execUnOp' :: Operator ->
+                 (Integer -> Integer) ->
+                 EAst Integer -> EAst Integer
+    execUnOp' _  op (Primary x) = Primary $ op x
+    execUnOp' op _  x           = Unary op x
 
